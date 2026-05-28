@@ -1,0 +1,18 @@
+# 민감 정보
+econ_config.py
+
+# 발행 파일
+posts/pending/
+posts/done/
+posts/images/
+
+# 로그/캐시
+logs/
+__pycache__/
+*.pyc
+*.pyo
+.playwright_*
+
+# 워크트리
+.worktrees/
+.claude/worktrees/
