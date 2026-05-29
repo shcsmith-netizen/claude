@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>장마감후여기 — 스킨 영역 PNG (배경 전용)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a1a;
+    font-family: 'Pretendard', sans-serif;
+    padding: 24px;
+    color: #fff;
+  }
+  h2 { font-size: 13px; margin: 24px 0 6px; color: #aaa; font-weight: 500; }
+  .skin-asset { position: relative; overflow: hidden; }
+
+  /* ── 컬러 ── */
+  :root {
+    --bg-main:   #FAFAF7;
+    --bg-sky:    #EAF4FB;
+    --bg-yellow: #FFF9E6;
+    --text:      #222222;
+    --sub:       #6C757D;
+    --red:       #E03131;
+    --blue:      #1971C2;
+    --yellow:    #F2C94C;
+    --border:    #E2E8F0;
+    --bd-yel:    #F2D26E;
+    --bd-blue:   #C7D9E8;
+  }
+
+  /* ── 1) 배경 상단 (3000×500) — 옅은 그라데이션 + 좌우 캔들 패턴 ── */
+  .bg-top {
+    width: 3000px; height: 500px;
+    background: linear-gradient(180deg, #EAF4FB 0%, #F5FBFF 60%, #FAFAF7 100%);
+  }
+
+  /* ── 2) 배경 하단 (3000×400) — 햇살 그라데이션 ── */
+  .bg-bottom {
+    width: 3000px; height: 400px;
+    background: linear-gradient(180deg, #FAFAF7 0%, #FFF6D6 100%);
+    position: relative;
+  }
+  .bg-bottom::before {
+    content: ''; position: absolute; left: 50%; bottom: 0;
+    transform: translateX(-50%);
+    width: 600px; height: 200px;
+    background: radial-gradient(ellipse at center bottom, #FFE8A8 0%, transparent 70%);
+    opacity: 0.6;
+  }
+
+  /* ── 3) 타이틀 (966×400) — 글자 포함 메인 배너 ── */
+  .title-area {
+    width: 966px; height: 400px;
+    background:
+      radial-gradient(circle at 18% 50%, #EAF4FB 0%, transparent 55%),
+      radial-gradient(circle at 88% 80%, #FFF9E6 0%, transparent 55%),
+      #FAFAF7;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .title-inner {
+    display: flex; align-items: center; gap: 48px;
+    padding: 0 40px;
+  }
+  .title-character { flex-shrink: 0; }
+  .title-text { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+  .title-tag {
+    font-size: 13px; color: #1971C2; font-weight: 600;
+    letter-spacing: 6px; text-transform: uppercase;
+  }
+  .title-name {
+    font-size: 60px; color: #222; font-weight: 800;
+    letter-spacing: -2px; line-height: 1;
+  }
+  .title-bar { width: 48px; height: 4px; background: #1971C2; }
+  .title-slogan {
+    font-size: 15px; color: #6C757D; font-weight: 500;
+    letter-spacing: -0.5px;
+  }
+  .title-bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #1971C2 0%, #F2C94C 50%, #E03131 100%);
+  }
+
+  /* ── 4) 메뉴 (966×60) — 배경만, 글자는 네이버 ── */
+  .menu-area {
+    width: 966px; height: 60px;
+    background: #FAFAF7;
+    border-bottom: 2px solid #1971C2;
+    border-top: 1px solid #E2E8F0;
+    position: relative;
+  }
+  .menu-area::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: #F2C94C;
+  }
+
+  /* ── 5) 전체박스 제목 (982×60) — 좌측 컬러바 데코 ── */
+  .wrap-header {
+    width: 982px; height: 60px;
+    background: linear-gradient(180deg, #FFFFFF 0%, #FAFAF7 100%);
+    border: 1px solid #E2E8F0; border-bottom: none;
+    border-radius: 12px 12px 0 0;
+    position: relative;
+  }
+  .wrap-header::before {
+    content: ''; position: absolute; left: 24px; top: 50%;
+    transform: translateY(-50%);
+    width: 5px; height: 22px; background: #1971C2;
+    border-radius: 3px;
+  }
+
+  /* ── 6) 전체박스 내용 (982×100) — 흰 배경 + 사이드 라인 ── */
+  .wrap-content {
+    width: 982px; height: 100px;
+    background: #FFFFFF;
+    border-left: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0;
+  }
+
+  /* ── 7) 전체박스 하단 (982×60) — 라운드 하단 + 옅은 라인 ── */
+  .wrap-footer {
+    width: 982px; height: 60px;
+    background: linear-gradient(180deg, #FAFAF7 0%, #F5F7FA 100%);
+    border: 1px solid #E2E8F0; border-top: 1px solid #EAF4FB;
+    border-radius: 0 0 12px 12px;
+    position: relative;
+  }
+  .wrap-footer::before {
+    content: ''; position: absolute; top: 0; left: 24px; right: 24px;
+    height: 1px; background: linear-gradient(90deg, transparent 0%, #C7D9E8 50%, transparent 100%);
+  }
+
+  /* ── 8) 구성박스 제목 (171×40) — 옅은 옐로우 헤더 ── */
+  .widget-header {
+    width: 171px; height: 40px;
+    background: linear-gradient(180deg, #FFF9E6 0%, #FEFCF2 100%);
+    border: 1px solid #F2D26E; border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    position: relative;
+  }
+  .widget-header::before {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2px; background: #F2C94C;
+  }
+
+  /* ── 9) 구성박스 내용 (171×40) — 흰 배경 + 옐로우 사이드 ── */
+  .widget-content {
+    width: 171px; height: 40px;
+    background: #FFFFFF;
+    border-left: 1px solid #F2D26E; border-right: 1px solid #F2D26E;
+  }
+
+  /* ── 10) 구성박스 하단 (171×30) — 라운드 풋 ── */
+  .widget-footer {
+    width: 171px; height: 30px;
+    background: linear-gradient(180deg, #FEFCF2 0%, #FAFAF7 100%);
+    border: 1px solid #F2D26E; border-top: none;
+    border-radius: 0 0 8px 8px;
+  }
+
+  /* ── 11) 프로필 상단 (171×40) — 하늘색 배경 ── */
+  .profile-top {
+    width: 171px; height: 40px;
+    background: linear-gradient(180deg, #EAF4FB 0%, #F5FBFF 100%);
+    border: 1px solid #C7D9E8; border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    position: relative;
+  }
+  .profile-top::before {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2px; background: #1971C2;
+  }
+
+  /* ── 12) 프로필 중앙 (171×40) — 흰 배경 + 사이드 보더 ── */
+  .profile-mid {
+    width: 171px; height: 40px;
+    background: #FFFFFF;
+    border-left: 1px solid #C7D9E8; border-right: 1px solid #C7D9E8;
+  }
+
+  /* ── 13) 프로필 하단 (171×30) — 라운드 풋 ── */
+  .profile-bottom {
+    width: 171px; height: 30px;
+    background: linear-gradient(180deg, #F5FBFF 0%, #FAFAF7 100%);
+    border: 1px solid #C7D9E8; border-top: none;
+    border-radius: 0 0 8px 8px;
+  }
+
+  /* 캔들 SVG */
+  .candle-svg { position: absolute; opacity: 0.16; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<h2>1. 배경 상단 (3000×500)</h2>
+<div class="skin-asset bg-top" data-skin="bg_top">
+  <svg class="candle-svg" style="left: 280px; top: 100px;" width="320" height="280" viewBox="0 0 320 280">
+    <g stroke="#1971C2" stroke-width="2.5" fill="#1971C2">
+      <line x1="40"  y1="40"  x2="40"  y2="200"/><rect x="32" y="80"  width="16" height="70" fill="#1971C2"/>
+      <line x1="100" y1="60"  x2="100" y2="220"/><rect x="92" y="100" width="16" height="60" fill="#1971C2"/>
+      <line x1="160" y1="80"  x2="160" y2="240"/><rect x="152" y="120" width="16" height="65" fill="#1971C2"/>
+      <line x1="220" y1="50"  x2="220" y2="210"/><rect x="212" y="90"  width="16" height="75" fill="#1971C2"/>
+    </g>
+  </svg>
+  <svg class="candle-svg" style="right: 280px; top: 120px;" width="320" height="260" viewBox="0 0 320 260">
+    <g stroke="#E03131" stroke-width="2.5">
+      <line x1="60"  y1="60"  x2="60"  y2="200"/><rect x="52" y="100" width="16" height="60" fill="#E03131"/>
+      <line x1="120" y1="80"  x2="120" y2="220"/><rect x="112" y="120" width="16" height="55" fill="#E03131"/>
+      <line x1="180" y1="40"  x2="180" y2="180"/><rect x="172" y="80"  width="16" height="65" fill="#E03131"/>
+      <line x1="240" y1="60"  x2="240" y2="200"/><rect x="232" y="100" width="16" height="55" fill="#E03131"/>
+    </g>
+  </svg>
+</div>
+
+<h2>2. 배경 하단 (3000×400)</h2>
+<div class="skin-asset bg-bottom" data-skin="bg_bottom"></div>
+
+<h2>3. 타이틀 (966×400) — 글자 포함</h2>
+<div class="skin-asset title-area" data-skin="title">
+  <div class="title-inner">
+    <!-- 캐릭터 -->
+    <svg class="title-character" width="220" height="220" viewBox="0 0 220 220">
+      <!-- 비 캔들 -->
+      <g stroke="#1971C2" stroke-width="2" opacity="0.55">
+        <line x1="20" y1="14" x2="20"  y2="78"/><rect x="12" y="30"  width="16" height="32" fill="#1971C2"/>
+        <line x1="50" y1="6"  x2="50"  y2="70"/><rect x="42" y="20"  width="16" height="34" fill="#1971C2"/>
+        <line x1="80" y1="14" x2="80"  y2="78"/><rect x="72" y="30"  width="16" height="32" fill="#1971C2"/>
+      </g>
+      <!-- 햇살 -->
+      <g transform="translate(170,52)">
+        <circle r="22" fill="#F2C94C"/>
+        <g stroke="#F2C94C" stroke-width="3" stroke-linecap="round">
+          <line x1="0" y1="-32" x2="0" y2="-40"/>
+          <line x1="22" y1="-22" x2="28" y2="-28"/>
+          <line x1="32" y1="0" x2="40" y2="0"/>
+          <line x1="22" y1="22" x2="28" y2="28"/>
+        </g>
+      </g>
+      <!-- 우산 -->
+      <g transform="translate(110,118)">
+        <path d="M-65 0 C-65 -36 -32 -60 0 -60 C32 -60 65 -36 65 0 Z"
+          fill="#DBEAFE" stroke="#1971C2" stroke-width="3"/>
+        <path d="M-65 0 C-55 -10 -45 -8 -38 0 C-30 -10 -20 -8 -12 0 C-4 -10 4 -10 12 0 C20 -8 30 -10 38 0 C45 -8 55 -10 65 0"
+          stroke="#1971C2" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <circle cx="-18" cy="-15" r="4" fill="#fff"/><circle cx="-18" cy="-15" r="2.4" fill="#1971C2"/>
+        <circle cx="18" cy="-15" r="4" fill="#fff"/><circle cx="18" cy="-15" r="2.4" fill="#1971C2"/>
+        <ellipse cx="-30" cy="-5" rx="5" ry="3" fill="#FFB3B3" opacity="0.6"/>
+        <ellipse cx="30" cy="-5" rx="5" ry="3" fill="#FFB3B3" opacity="0.6"/>
+        <line x1="0" y1="-60" x2="0" y2="65" stroke="#1971C2" stroke-width="3" stroke-linecap="round"/>
+        <path d="M0 65 Q-12 70 -12 60" stroke="#1971C2" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <!-- 텍스트 -->
+    <div class="title-text">
+      <div class="title-tag">JANGMA · ECONOMY</div>
+      <div class="title-name">장마감후여기</div>
+      <div class="title-bar"></div>
+      <div class="title-slogan">장마(하락)를 피하는 매매, 장 마감 후 여기서</div>
+    </div>
+  </div>
+  <div class="title-bottom-bar"></div>
+</div>
+
+<h2>4. 메뉴 (966×60) — 배경만</h2>
+<div class="skin-asset menu-area" data-skin="menu"></div>
+
+<h2>5. 전체박스 제목 (982×60) — 배경만, 좌측 데코</h2>
+<div class="skin-asset wrap-header" data-skin="wrap_header"></div>
+
+<h2>6. 전체박스 내용 (982×100) — 흰 배경 + 사이드 라인</h2>
+<div class="skin-asset wrap-content" data-skin="wrap_content"></div>
+
+<h2>7. 전체박스 하단 (982×60) — 라운드 하단</h2>
+<div class="skin-asset wrap-footer" data-skin="wrap_footer"></div>
+
+<h2>8. 구성박스 제목 (171×40) — 배경만</h2>
+<div class="skin-asset widget-header" data-skin="widget_header"></div>
+
+<h2>9. 구성박스 내용 (171×40) — 흰 배경</h2>
+<div class="skin-asset widget-content" data-skin="widget_content"></div>
+
+<h2>10. 구성박스 하단 (171×30) — 라운드</h2>
+<div class="skin-asset widget-footer" data-skin="widget_footer"></div>
+
+<h2>11. 프로필 상단 (171×40) — 하늘색</h2>
+<div class="skin-asset profile-top" data-skin="profile_top"></div>
+
+<h2>12. 프로필 중앙 (171×40) — 흰</h2>
+<div class="skin-asset profile-mid" data-skin="profile_mid"></div>
+
+<h2>13. 프로필 하단 (171×30) — 라운드</h2>
+<div class="skin-asset profile-bottom" data-skin="profile_bottom"></div>
+
+</body>
+</html>

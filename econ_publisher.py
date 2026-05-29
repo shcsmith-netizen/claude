@@ -262,7 +262,10 @@ def _prepare_section_for_editor(text: str) -> str:
             if row:
                 out.append(row)
             continue
-        m = re.match(r'^#{1,6}\s*(\S.*)$', stripped)
+        # 마크다운 헤딩은 '# 제목'처럼 # 뒤에 공백 필수(\s+).
+        # 해시태그 줄 '#코스피마감 #코스닥마감...'은 # 뒤 공백이 없어 헤딩으로 오인되지 않음
+        # (\s* 였을 때 첫 태그의 #만 잘려나가던 버그 수정)
+        m = re.match(r'^#{1,6}\s+(\S.*)$', stripped)
         if m:
             out.append(clean_inline(m.group(1).strip()))
             continue
@@ -1053,15 +1056,17 @@ async def upload_image(page: Page, img_path: Path):
             else:
                 log.warning(f"사진 버튼 클릭 실패 — file input 직접 접근 시도: {img_path.name}")
 
+            # 사진 버튼 클릭 후 file input이 DOM에 붙는 데 시간이 걸림 →
+            # 짧게 끊지 말고 최대 ~9초까지 점진 대기 (1차 시도 실패 후 새로고침 40초 낭비 방지)
             input_set = False
-            for wait_sec in (0.15, 0.5, 1.0):
+            for wait_sec in (0.15, 0.35, 0.5, 0.7, 1.0, 1.0, 1.5, 1.5, 2.0):
                 if await _set_file_input_anywhere(page, img_path):
                     input_set = True
                     break
                 await asyncio.sleep(wait_sec)
             if not input_set:
                 await _click_pc_upload_panel(page)
-                for wait_sec in (0.2, 0.7, 1.2):
+                for wait_sec in (0.2, 0.7, 1.2, 1.5, 2.0):
                     if await _set_file_input_anywhere(page, img_path):
                         input_set = True
                         break
