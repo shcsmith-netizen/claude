@@ -2547,51 +2547,52 @@ async def main():
     lock = PublishLock()
     lock.__enter__()
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch_persistent_context(
-                user_data_dir=str(PROFILE_DIR),
-                headless=False,
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                args=["--start-maximized"],
-                no_viewport=True,
-            )
-            page = browser.pages[0] if browser.pages else await browser.new_page()
+        total = len(txts)
+        for idx, txt in enumerate(txts):
+            result = parse_post(txt)
+            if not result:
+                log.warning(f"파싱 실패, 스킵: {txt.name}")
+                continue
+            title, category, img_keyword, body = result
+            if not title:
+                log.warning(f"제목 없음, 스킵: {txt.name}")
+                continue
 
-            await login(page)
-
-            for txt in txts:
-                result = parse_post(txt)
-                if not result:
-                    log.warning(f"파싱 실패, 스킵: {txt.name}")
-                    continue
-                title, category, img_keyword, body = result
-                if not title:
-                    log.warning(f"제목 없음, 스킵: {txt.name}")
-                    continue
-
-                # 이미지 없으면 card_generator로 자동 생성
-                image_paths = get_image_paths(txt.name)
-                if not image_paths and "[이미지]" in body:
-                    try:
-                        from card_generator import generate_cards
-                        stem = txt.stem
-                        parts = stem.split("_")
-                        code = (parts[0] + parts[1]) if len(parts) >= 2 and parts[1].isdigit() else stem[:8]
-                        out_dir = IMAGES_DIR / code
-                        log.info(f"카드 이미지 자동 생성: {out_dir}")
-                        generate_cards(txt, out_dir)
-                        image_paths = get_image_paths(txt.name)
-                        log.info(f"카드 생성 완료: {len(image_paths)}장")
-                    except Exception as e:
-                        log.warning(f"카드 생성 실패 (계속 진행): {e}")
-
-                log.info(f"--- {txt.name} | 이미지 {len(image_paths)}장 ---")
-
+            # 이미지 없으면 card_generator로 자동 생성
+            image_paths = get_image_paths(txt.name)
+            if not image_paths and "[이미지]" in body:
                 try:
+                    from card_generator import generate_cards
+                    stem = txt.stem
+                    parts = stem.split("_")
+                    code = (parts[0] + parts[1]) if len(parts) >= 2 and parts[1].isdigit() else stem[:8]
+                    out_dir = IMAGES_DIR / code
+                    log.info(f"카드 이미지 자동 생성: {out_dir}")
+                    generate_cards(txt, out_dir)
+                    image_paths = get_image_paths(txt.name)
+                    log.info(f"카드 생성 완료: {len(image_paths)}장")
+                except Exception as e:
+                    log.warning(f"카드 생성 실패 (계속 진행): {e}")
+
+            log.info(f"--- [{idx + 1}/{total}] {txt.name} | 이미지 {len(image_paths)}장 ---")
+
+            # 메모리 6GB 대응: 글 1편마다 독립 크롬 실행→발행→종료로 메모리 누적 차단.
+            # persistent profile이라 매번 재로그인/2차인증 없이 세션 재사용됨.
+            async with async_playwright() as p:
+                browser = await p.chromium.launch_persistent_context(
+                    user_data_dir=str(PROFILE_DIR),
+                    headless=False,
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    args=["--start-maximized"],
+                    no_viewport=True,
+                )
+                page = browser.pages[0] if browser.pages else await browser.new_page()
+                try:
+                    await login(page)
                     ok = await publish_post(page, title, body, category, image_paths, schedule_dt=parse_schedule(txt.name))
                     if ok:
                         move_to_done(txt)
@@ -2599,12 +2600,17 @@ async def main():
                         log.error(f"발행 실패: {txt.name}")
                 except Exception as e:
                     log.error(f"발행 중 오류 ({txt.name}): {e}")
+                finally:
+                    try:
+                        await asyncio.sleep(2)
+                        await browser.close()
+                    except Exception:
+                        pass
 
-                await asyncio.sleep(3)
+            # 다음 글 전 크롬 종료/프로필 락 해제 대기
+            await asyncio.sleep(3)
 
-            await asyncio.sleep(5)
-            await browser.close()
-            log.info("모든 발행 완료")
+        log.info("모든 발행 완료")
     finally:
         lock.__exit__(None, None, None)
 
