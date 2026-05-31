@@ -407,7 +407,7 @@ def save_post(content: str, D: dict) -> Path | None:
 
 def git_push():
     # stock_auto.py 위치가 ~/claude/econ_auto/ 이면 repo root = 한 단계 위
-    repo_dir = BASE_DIR.parent
+    repo_dir = BASE_DIR
     try:
         subprocess.run(["git", "-C", str(repo_dir), "add", "-A"], check=True)
         msg = f"stock_auto: {datetime.now().strftime('%Y-%m-%d %H:%M')} 종목공부 자동 생성"
