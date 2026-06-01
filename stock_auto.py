@@ -244,6 +244,10 @@ def collect_stock_data(ticker: str, name: str) -> dict | None:
         log.error(f"데이터 수집 실패 ({name}): {e}")
         return None
 
+
+import naver_stock as _ns
+collect_stock_data = _ns.collect_stock_data
+
 # ── 카드뉴스 생성 ─────────────────────────────
 def make_overview_card(D: dict, out_dir: Path) -> Path:
     W, H = 966, 460
@@ -459,7 +463,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# naver crawling
-import naver_stock as _ns
-collect_stock_data = _ns.collect_stock_data
