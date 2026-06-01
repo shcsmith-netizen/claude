@@ -47,15 +47,27 @@ def collect_stock_data(ticker: str, name: str) -> dict | None:
             if m:
                 market_cap = int(m.group(1)) * 10000 + int(m.group(2).replace(',', ''))
 
-            # 52주 최고/최저
+            # 52주 최고/최저 (형식 두 가지 대응)
             mh = re.search(r'52주 최고 : ([\d,]+)', txt)
             ml = re.search(r'52주 최저 : ([\d,]+)', txt)
-            if mh: high_52w = int(mh.group(1).replace(',', ''))
-            if ml: low_52w  = int(ml.group(1).replace(',', ''))
+            if mh and ml:
+                high_52w = int(mh.group(1).replace(',', ''))
+                low_52w  = int(ml.group(1).replace(',', ''))
+            else:
+                m52 = re.search(r'(?s)52주.{0,60}?([\d,]{5,})(?:\D{0,15}?)([\d,]{5,})', txt)
+                if m52:
+                    high_52w = int(m52.group(1).replace(',', ''))
+                    low_52w  = int(m52.group(2).replace(',', ''))
 
-            # PER (PER/EPS 섹션 첫 번째 값)
-            mp = re.search(r'(?s)PER/EPS.{0,200}?(\d+\.\d+)배', txt)
-            if mp: per = float(mp.group(1))
+            # PER (N/A인 경우 추정PER 사용)
+            per_sec = re.search(r'(?s)PER/EPS(.*?)추정PER', txt)
+            if per_sec:
+                mp = re.search(r'(\d+\.\d+)배', per_sec.group(1))
+                if mp:
+                    per = float(mp.group(1))
+                else:
+                    mp2 = re.search(r'(?s)추정PERlEPS.{0,300}?(\d+\.\d+)배', txt)
+                    if mp2: per = float(mp2.group(1))
 
             # PBR
             mb = re.search(r'(?s)PBRlBPS.{0,500}?(\d+\.\d+)배', txt)
