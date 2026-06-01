@@ -327,8 +327,9 @@ def make_supply_card(D: dict, out_dir: Path) -> Path:
 
 
 def generate_cards(D: dict) -> tuple[list[Path], Path]:
-    ts      = datetime.now().strftime("%y%m%d")
-    out_dir = IMAGES_DIR / ts / D["ticker"]
+    safe = re.sub(r'[\\/:*?"<>|]', "_", D["name"])[:10]
+    ts = datetime.now().strftime("%y%m%d%H")
+    out_dir = IMAGES_DIR / f"{ts}_종목공부_{safe}"
     out_dir.mkdir(parents=True, exist_ok=True)
     paths   = []
     try:

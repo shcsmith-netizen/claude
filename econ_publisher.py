@@ -1,3 +1,4 @@
+from __future__ import annotations
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -2589,6 +2590,7 @@ async def main():
             # persistent profile이라 매번 재로그인/2차인증 없이 세션 재사용됨.
             async with async_playwright() as p:
                 browser = await p.chromium.launch_persistent_context(
+                    executable_path="/usr/bin/chromium-browser",
                     user_data_dir=str(PROFILE_DIR),
                     headless=True,
                     user_agent=(
