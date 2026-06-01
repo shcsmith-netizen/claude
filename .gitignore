@@ -3,7 +3,6 @@ config.py
 econ_config.py
 
 # 발행 파일
-posts/pending/
 posts/done/
 posts/images/
 
