@@ -30,7 +30,31 @@ def collect_stock_data(ticker: str, name: str) -> dict | None:
         # ── 시총 / 52주 / PER / PBR ─────────────────────────
         high_52w = low_52w = market_cap = 0
         per = pbr = 0.0
+        # 수급 데이터 (최근 20일 기준, 기관/외국인 순매매대금 추산)
         foreign_net = inst_net = retail_net = 0
+        try:
+            r3 = requests.get(f'https://finance.naver.com/item/frgn.naver?code={ticker}&page=1', headers=_HEADERS, timeout=10)
+            if BS:
+                soup3 = BS(r3.content, 'html.parser')
+                tables = soup3.find_all('table', {'class': 'type2'})
+                if len(tables) > 1:
+                    trs = tables[1].find_all('tr', {'onmouseover': 'mouseOver(this)'})
+                    f_sum = i_sum = 0
+                    for tr in trs:
+                        tds = tr.find_all('td')
+                        if len(tds) >= 7:
+                            try:
+                                close_p = int(tds[1].text.strip().replace(',', ''))
+                                i_vol = int(tds[5].text.strip().replace(',', ''))
+                                f_vol = int(tds[6].text.strip().replace(',', ''))
+                                i_sum += i_vol * close_p
+                                f_sum += f_vol * close_p
+                            except:
+                                pass
+                    foreign_net = f_sum // 100000000
+                    inst_net = i_sum // 100000000
+        except Exception as e:
+            log.warning(f'수급 파싱 실패: {e}')
         try:
             r2 = requests.get(
                 f'https://finance.naver.com/item/main.naver?code={ticker}',

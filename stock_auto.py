@@ -371,24 +371,44 @@ PER: {D['per']}배 / PBR: {D['pbr']}배
 #종목공부 #{D['name'].replace(' ','')} #코스피 #주식공부 #종목분석 #재무분석 #수급분석 #장마여 #장마감후여기 #투자일지 #한국주식 #실적분석 #밸류에이션 #주식투자 #오늘뉴스"""
 
     try:
-        resp = requests.post(
-            GROQ_URL,
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model":       "llama-3.3-70b-versatile",
-                "messages":    [
-                    {"role": "system", "content": "You are a Korean stock blogger. Write exclusively in Korean (Hangul). Never use Chinese characters (漢字/汉字) or Japanese characters. Only use pure Korean/Hangul text."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.8,
-                "max_tokens":  4096,
-            },
-            timeout=60,
-        )
-        result = resp.json()
-        if "choices" not in result:
-            log.error(f"Groq 오류: {result.get('error', result)}")
-            return None
+        for attempt in range(3):
+            resp = requests.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model":       "llama-3.3-70b-versatile",
+                    "messages":    [
+                        {"role": "system", "content": "You are a Korean stock blogger. Write exclusively in Korean (Hangul). Never use Chinese characters (漢字/汉字) or Japanese characters. Only use pure Korean/Hangul text."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.8,
+                    "max_tokens":  4096,
+                },
+                timeout=60,
+            )
+            result = resp.json()
+            if "choices" not in result:
+                log.error(f"Groq 오류: {result.get('error', result)}")
+                return None
+            text = result["choices"][0]["message"]["content"].strip()
+            text = re.sub(r"^```[^\n]*\n?", "", text)
+            text = re.sub(r"\n?```$",       "", text.strip())
+            
+            # 한자 강제 필터링 (버리지 않고 한자만 삭제)
+            if re.search(r'[\u4e00-\u9fff]', text):
+                log.warning("한자가 감지되어 강제로 삭제(필터링) 처리합니다.")
+                text = re.sub(r'[\u4e00-\u9fff]', '', text)
+                text = re.sub(r'\(\s*\)', '', text) # 텅 빈 괄호 제거
+                text = re.sub(r'\[\s*\]', '', text)
+                
+            log.info(f"Groq 생성 완료: {D['name']}")
+            return text
+            
+        log.error("3회 연속 한자가 포함되어 글 생성을 포기합니다.")
+        return None
+    except Exception as e:
+        log.error(f"Groq 생성 실패: {e}")
+        return None
         text = result["choices"][0]["message"]["content"].strip()
         text = re.sub(r"^```[^\n]*\n?", "", text)
         text = re.sub(r"\n?```$",       "", text.strip())

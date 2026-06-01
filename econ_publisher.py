@@ -107,19 +107,20 @@ def parse_post(path: Path):
 
 
 def get_image_paths(filename: str) -> list[Path]:
-    """파일명에서 YYMMDDNN 추출 → posts/images/YYMMDDNN/ 폴더의 이미지 파일 반환"""
     stem = Path(filename).stem
+    exact_dir = IMAGES_DIR / stem
+    exts = {".png", ".jpg", ".jpeg", ".webp"}
+    if exact_dir.is_dir():
+        return sorted(p for p in exact_dir.iterdir() if p.suffix.lower() in exts and not p.name.startswith("."))
+    
     parts = stem.split("_")
-    # 260503_01_... → '26050301'
     date_code = (parts[0] + parts[1]) if len(parts) >= 2 and parts[1].isdigit() else stem[:8]
     img_dir = IMAGES_DIR / date_code
     if not img_dir.is_dir():
-        img_dir = IMAGES_DIR / stem[:6]  # fallback: YYMMDD
+        img_dir = IMAGES_DIR / stem[:6]
     if not img_dir.is_dir():
         return []
-    exts = {".png", ".jpg", ".jpeg", ".webp"}
-    imgs = sorted(p for p in img_dir.iterdir() if p.suffix.lower() in exts and not p.name.startswith("."))
-    return imgs
+    return sorted(p for p in img_dir.iterdir() if p.suffix.lower() in exts and not p.name.startswith("."))
 
 
 def clean_body_text(text: str) -> str:
