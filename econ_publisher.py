@@ -920,7 +920,7 @@ async def _reload_and_restore_draft(page: Page) -> bool:
         for (const btn of document.querySelectorAll('button, [role="button"]')) {
             if (!isVisible(btn)) continue;
             const t = (btn.innerText || btn.textContent || '').trim();
-            if (/이어서\s*작성|이어쓰기|계속\s*작성/.test(t)) { btn.click(); return t; }
+            if (/이어서\\s*작성|이어쓰기|계속\\s*작성/.test(t)) { btn.click(); return t; }
         }
         return null;
     }"""
@@ -1001,29 +1001,48 @@ async def upload_image(page: Page, img_path: Path):
             await asyncio.sleep(0.5)
 
             # 빈 단락 생성 → SE3 floating toolbar 활성화
-            # .se-component.se-text 스코프로 에디터 텍스트 영역만 타깃 (.se-main-container 없을 수 있음)
-            _CE_SEL = ".se-component.se-text [contenteditable='true']"
-            _body_clicked = False
-            for _ctx in _editor_contexts(page):
-                try:
-                    _ce = _ctx.locator(_CE_SEL).last
-                    if await _ce.count() > 0 and await _ce.is_visible(timeout=400):
-                        await _ce.click(timeout=2000)
-                        _body_clicked = True
-                        break
-                except Exception:
-                    continue
+            # JS로 마지막 텍스트 컴포넌트에 커서 이동 후 Enter (Playwright click 사용 안 함)
+            _body_clicked = await page.evaluate("""() => {
+                const comps = Array.from(document.querySelectorAll('.se-component.se-text [contenteditable="true"]'));
+                const last = comps[comps.length - 1];
+                if (!last) return false;
+                last.focus();
+                const r = document.createRange();
+                r.selectNodeContents(last);
+                r.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(r);
+                last.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
+                return true;
+            }""")
             if _body_clicked:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.3)
                 try:
                     await page.keyboard.press("End")
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.15)
                     await page.keyboard.press("Enter")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.6)
                 except Exception:
                     pass
             else:
-                await asyncio.sleep(0.5)
+                # fallback: mouse.click on last visible contenteditable
+                try:
+                    loc = page.locator(".se-component.se-text [contenteditable='true']").last
+                    if await loc.count() > 0:
+                        bb = await loc.bounding_box()
+                        if bb:
+                            await page.mouse.click(bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2)
+                            await asyncio.sleep(0.3)
+                            await page.keyboard.press("End")
+                            await asyncio.sleep(0.15)
+                            await page.keyboard.press("Enter")
+                            await asyncio.sleep(0.6)
+                            _body_clicked = True
+                except Exception:
+                    pass
+                if not _body_clicked:
+                    await asyncio.sleep(0.5)
 
             # 이미지 버튼이 나타날 때까지 최대 5초 대기 (에디터 초기화 타이밍 문제 방지)
             _IMG_BTN_SEL = ".se-main-container button.se-image-toolbar-button"
@@ -1451,13 +1470,17 @@ async def clear_popups(page: Page):
         pass
 
     contexts = [("page", page)] + [(f"frame[{idx}]", frame) for idx, frame in enumerate(page.frames)]
-    popup_result = None
+    popup_found = False
+    popup_buttons: list = []
 
+    # 네이버 '작성 중인 글이 있습니다' 팝업 처리 (ib 스킬에서 검증된 방식)
+    #   - '취소' = 새 글 작성(옛 초안 안 불러옴) → 우리가 원하는 동작
+    #   - '확인'/'이어서 작성'/'계속' = 옛 초안 복원(덧붙음) → 절대 클릭 금지
     for attempt in range(3):
         for label, ctx in contexts:
             try:
-                popup_result = await ctx.evaluate("""
-                    ({ markerTexts, buttonTexts }) => {
+                res = await ctx.evaluate("""
+                    ({ markerTexts, freshTexts, restoreTexts }) => {
                         const isVisible = (el) => {
                             if (!(el instanceof HTMLElement) || !el.isConnected) return false;
                             const style = window.getComputedStyle(el);
@@ -1467,76 +1490,92 @@ async def clear_popups(page: Page):
                         const textOf = (el) => ((el.innerText || el.textContent || '') + '')
                             .replace(/\\s+/g, ' ')
                             .trim();
-                        const containers = Array.from(document.querySelectorAll("[role='dialog'], .se-popup, .se-popup-container, .ly_alert, .layer_popup"));
-                        const matchedContainer = containers.find((el) => {
-                            if (!isVisible(el)) return false;
-                            const text = textOf(el);
-                            return markerTexts.some((marker) => text.includes(marker));
-                        });
-                        if (!matchedContainer) return null;
+                        const hasAny = (t, arr) => arr.some((m) => t.includes(m));
+                        const containers = Array.from(document.querySelectorAll(
+                            "[role='dialog'], .se-popup, .se-popup-container, .se-popup-alert, .se-popup-alert-confirm, .ly_alert, .layer_popup"
+                        ));
+                        const box = containers.find((el) => isVisible(el) && hasAny(textOf(el), markerTexts));
+                        if (!box) return { found: false };
 
-                        const buttons = Array.from(matchedContainer.querySelectorAll("button, [role='button'], a"));
-                        for (const label of buttonTexts) {
-                            const btn = buttons.find((el) => isVisible(el) && textOf(el).includes(label));
-                            if (btn) {
-                                btn.click();
-                                return label;
-                            }
-                        }
-
-                        const fallback = buttons.find((el) => {
-                            if (!isVisible(el)) return false;
-                            const text = textOf(el);
-                            return /새 글 작성|새글 작성|새 글 쓰기|새로 작성|새로 쓰기/.test(text);
+                        const buttons = Array.from(box.querySelectorAll("button, [role='button'], a")).filter(isVisible);
+                        const labels = buttons.map(textOf);
+                        const isRestore = (t) => hasAny(t, restoreTexts);
+                        // 1순위: '새 글 작성' 계열
+                        let target = buttons.find((b) => hasAny(textOf(b), freshTexts));
+                        // 2순위: '취소'/'닫기' (= 새 글 작성), 단 '확인/이어서/계속'은 제외
+                        if (!target) target = buttons.find((b) => {
+                            const t = textOf(b);
+                            return /취소|닫기|아니오|아니요/.test(t) && !isRestore(t);
                         });
-                        if (fallback) {
-                            fallback.click();
-                            return textOf(fallback) || "fallback";
+                        if (target) {
+                            const t = textOf(target);
+                            target.click();
+                            return { found: true, clicked: t, buttons: labels };
                         }
-                        return "marker-only";
+                        return { found: true, clicked: null, buttons: labels };
                     }
                 """, {
                     "markerTexts": [
                         "작성 중인 글이 있습니다",
                         "작성중인 글이 있습니다",
                         "이어서 작성",
+                        "저장된 글",
                         "임시저장",
                     ],
-                    "buttonTexts": ["새 글 작성", "새글 작성", "새 글 쓰기", "새로 작성", "새로 쓰기"],
+                    "freshTexts": ["새 글 작성", "새글 작성", "새 글 쓰기", "새로 작성", "새로 쓰기"],
+                    "restoreTexts": ["확인", "이어서", "계속", "불러오기"],
                 })
             except Exception:
-                popup_result = None
+                res = None
 
-            if popup_result and popup_result != "marker-only":
-                log.info(f"작성 중인 글 팝업 처리 완료 ({label}): {popup_result}")
-                await asyncio.sleep(2.0)
-                return
+            if isinstance(res, dict) and res.get("found"):
+                popup_found = True
+                if res.get("buttons"):
+                    popup_buttons = res["buttons"]
+                if res.get("clicked"):
+                    log.info(f"작성 중인 글 팝업 닫음 ({label}): '{res['clicked']}' 클릭 (버튼={popup_buttons})")
+                    await asyncio.sleep(2.0)
+                    return
 
-        if popup_result == "marker-only":
-            log.warning(f"작성 중인 글 팝업 감지했으나 버튼 미발견. 0.5초 후 재확인 ({attempt+1}/3)")
+        if popup_found:
+            log.warning(f"작성 중인 글 팝업 감지, JS 닫기 실패 (버튼={popup_buttons}) — 재시도 ({attempt+1}/3)")
             await asyncio.sleep(0.5)
         else:
             break
 
-    if popup_result == "marker-only":
-        # Playwright로 팝업 내 첫 번째 버튼 직접 클릭 시도
+    if popup_found:
+        # JS로 못 닫음 → Playwright로 '취소'/'닫기'/'새 글 작성' 직접 클릭 (ib 스킬 검증 방식)
+        for txt in ["취소", "닫기", "새 글 작성", "새로 작성"]:
+            try:
+                btn = page.locator(f"button:has-text('{txt}')").first
+                if await btn.is_visible(timeout=1000):
+                    await btn.click()
+                    await asyncio.sleep(1.5)
+                    log.info(f"작성 중인 글 팝업 닫음(Playwright): '{txt}' 클릭")
+                    return
+            except Exception:
+                continue
+        # 그래도 안 닫히면 감지된 팝업 컨테이너 자체를 DOM에서 제거 → 빈 에디터로 진행
         try:
-            popup_btn = page.locator('.se-popup-alert button, .se-popup-alert-confirm button').first
-            if await popup_btn.is_visible(timeout=1000):
-                await popup_btn.click()
-                await asyncio.sleep(1.5)
-                log.info("작성 중인 글 팝업 처리: Playwright 직접 클릭 완료")
-                try:
-                    await page.evaluate("document.querySelectorAll('.se-popup-dim, .se-popup-alert, .se-popup-alert-confirm').forEach(el => el.remove())")
-                except Exception:
-                    pass
-                return
-        except Exception:
-            pass
+            removed = await page.evaluate("""
+                (markerTexts) => {
+                    const textOf = (el) => ((el.innerText || el.textContent || '') + '').replace(/\\s+/g, ' ').trim();
+                    const sel = "[role='dialog'], .se-popup, .se-popup-container, .se-popup-alert, .se-popup-alert-confirm, .ly_alert, .layer_popup";
+                    let n = 0;
+                    document.querySelectorAll(sel).forEach((el) => {
+                        if (markerTexts.some((m) => textOf(el).includes(m))) { el.remove(); n++; }
+                    });
+                    document.querySelectorAll('.se-popup-dim, .dimmed, .layer_dim').forEach((el) => { el.remove(); n++; });
+                    return n;
+                }
+            """, ["작성 중인 글이 있습니다", "작성중인 글이 있습니다", "이어서 작성", "저장된 글", "임시저장"])
+            log.info(f"작성 중인 글 팝업 강제 제거: {removed}개 (빈 에디터로 진행)")
+            await asyncio.sleep(1.0)
+        except Exception as e:
+            log.warning(f"작성 중인 글 팝업 강제 제거 실패: {e}")
         try:
             await page.keyboard.press("Escape")
-            await asyncio.sleep(1.0)
-            log.info("작성 중인 글 팝업 처리: Escape 폴백 완료")
+            await asyncio.sleep(0.5)
         except Exception:
             pass
 
@@ -1549,6 +1588,31 @@ async def clear_popups(page: Page):
         """)
     except Exception:
         pass
+
+
+import ctypes as _ctypes
+
+def set_clipboard(text: str) -> bool:
+    """Windows ctypes로 클립보드에 UTF-16LE 복사"""
+    try:
+        if not _ctypes.windll.user32.OpenClipboard(None):
+            return False
+        _ctypes.windll.user32.EmptyClipboard()
+        data = text.encode("utf-16le") + b"\x00\x00"
+        h_mem = _ctypes.windll.kernel32.GlobalAlloc(0x0002, len(data))
+        if not h_mem:
+            _ctypes.windll.user32.CloseClipboard()
+            return False
+        ptr = _ctypes.windll.kernel32.GlobalLock(h_mem)
+        if ptr:
+            _ctypes.cdll.msvcrt.memcpy(ptr, data, len(data))
+            _ctypes.windll.kernel32.GlobalUnlock(h_mem)
+            _ctypes.windll.user32.SetClipboardData(13, h_mem)
+        _ctypes.windll.user32.CloseClipboard()
+        return True
+    except Exception as e:
+        log.error(f"클립보드 복사 오류: {e}")
+        return False
 
 
 async def _has_session(page: Page) -> bool:
@@ -1568,7 +1632,7 @@ async def _has_session(page: Page) -> bool:
 
 
 async def login(page: Page):
-    """네이버 로그인 (세션이 살아있으면 스킵) — 세션 없으면 수동 로그인 대기"""
+    """네이버 로그인 (세션이 살아있으면 스킵) — 세션 없으면 자동 입력 후 5분 대기"""
     log.info("세션 확인 중...")
     write_url = f"https://blog.naver.com/PostWriteForm.naver?blogId={BLOG_ID}"
     await page.goto(write_url, wait_until="domcontentloaded", timeout=30000)
@@ -1580,25 +1644,42 @@ async def login(page: Page):
 
     await page.goto("https://nid.naver.com/nidlogin.login", wait_until="domcontentloaded", timeout=30000)
     await asyncio.sleep(2)
+
     if NAVER_ID and NAVER_PW:
         try:
-            log.info("자동 로그인 시도...")
-            await page.fill("#id", NAVER_ID)
+            log.info("클립보드 방식으로 자동 로그인 시도...")
+            await page.click("#id")
             await asyncio.sleep(0.5)
-            await page.fill("#pw", NAVER_PW)
+            if set_clipboard(NAVER_ID):
+                await page.keyboard.press("Control+V")
+            else:
+                await page.fill("#id", NAVER_ID)
             await asyncio.sleep(0.5)
-            login_btn = page.locator(".btn_login, button[type=submit]").first
+
+            await page.click("#pw")
+            await asyncio.sleep(0.5)
+            if set_clipboard(NAVER_PW):
+                await page.keyboard.press("Control+V")
+            else:
+                await page.fill("#pw", NAVER_PW)
+            await asyncio.sleep(0.5)
+
+            login_btn = page.locator(".btn_login, #log\\.login, button[type='submit']").first
             await login_btn.click()
-            log.info("로그인 버튼 클릭")
+            log.info("로그인 버튼 클릭 완료")
             await asyncio.sleep(3)
         except Exception as e:
-            log.error(f"자동 로그인 오류: {e}")
+            log.error(f"자동 로그인 중 오류: {e}")
+    else:
+        log.warning("NAVER_ID/PW 미설정 — 수동 로그인 필요")
+
+    log.warning("2차 인증 또는 캡차가 있으면 브라우저에서 직접 완료해 주세요 (최대 5분 대기)")
     import time as _time
     deadline = _time.time() + 300
     while _time.time() < deadline:
         await asyncio.sleep(3)
         if await _has_session(page):
-            log.info("로그인 완료")
+            log.info("로그인 세션 확인 완료")
             return
     raise Exception("로그인 대기 시간 초과 (5분)")
 
