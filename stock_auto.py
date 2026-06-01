@@ -375,7 +375,10 @@ PER: {D['per']}배 / PBR: {D['pbr']}배
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
             json={
                 "model":       "llama-3.3-70b-versatile",
-                "messages":    [{"role": "user", "content": prompt}],
+                "messages":    [
+                    {"role": "system", "content": "You are a Korean stock blogger. Write exclusively in Korean (Hangul). Never use Chinese characters (漢字/汉字) or Japanese characters. Only use pure Korean/Hangul text."},
+                    {"role": "user", "content": prompt}
+                ],
                 "temperature": 0.8,
                 "max_tokens":  4096,
             },
