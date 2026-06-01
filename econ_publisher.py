@@ -1576,21 +1576,29 @@ async def login(page: Page):
         log.info("기존 세션 사용")
         return
 
-    log.warning("=" * 60)
-    log.warning("세션 없음 → 브라우저에서 직접 labandiera 계정으로 로그인해 주세요")
-    log.warning("로그인 완료 후 자동으로 계속 진행됩니다 (최대 5분 대기)")
-    log.warning("=" * 60)
     await page.goto("https://nid.naver.com/nidlogin.login", wait_until="domcontentloaded", timeout=30000)
-
+    await asyncio.sleep(2)
+    if NAVER_ID and NAVER_PW:
+        try:
+            log.info("자동 로그인 시도...")
+            await page.fill("#id", NAVER_ID)
+            await asyncio.sleep(0.5)
+            await page.fill("#pw", NAVER_PW)
+            await asyncio.sleep(0.5)
+            login_btn = page.locator(".btn_login, button[type=submit]").first
+            await login_btn.click()
+            log.info("로그인 버튼 클릭")
+            await asyncio.sleep(3)
+        except Exception as e:
+            log.error(f"자동 로그인 오류: {e}")
     import time as _time
-    deadline = _time.time() + 300  # 5분
+    deadline = _time.time() + 300
     while _time.time() < deadline:
         await asyncio.sleep(3)
         if await _has_session(page):
-            log.info("수동 로그인 확인 완료")
+            log.info("로그인 완료")
             return
-
-    raise Exception("로그인 대기 시간 초과 (5분) — 브라우저에서 직접 로그인 후 다시 실행해 주세요")
+    raise Exception("로그인 대기 시간 초과 (5분)")
 
 
 TITLE_SELECTORS = [
@@ -2581,14 +2589,14 @@ async def main():
             async with async_playwright() as p:
                 browser = await p.chromium.launch_persistent_context(
                     user_data_dir=str(PROFILE_DIR),
-                    headless=False,
+                    headless=True,
                     user_agent=(
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
                         "Chrome/124.0.0.0 Safari/537.36"
                     ),
-                    args=["--start-maximized"],
-                    no_viewport=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+                    viewport={"width": 1920, "height": 1080},
                 )
                 page = browser.pages[0] if browser.pages else await browser.new_page()
                 try:

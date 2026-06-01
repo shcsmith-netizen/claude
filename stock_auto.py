@@ -224,12 +224,6 @@ def collect_stock_data(ticker: str, name: str) -> dict | None:
         except Exception:
             pass
 
-        # 핵심 데이터 부족 시 스킵 (KRX API 차단 방지)
-        if market_cap == 0 and per == 0.0 and foreign_net == 0:
-            import logging as _log
-            _log.getLogger().error(f"{name}: 시총/PER/수급 모두 0 — KRX API 응답 없음. 글 생성 스킵.")
-            return None
-
         return {
             "ticker":      ticker,
             "name":        name,
@@ -465,3 +459,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# naver crawling
+import naver_stock as _ns
+collect_stock_data = _ns.collect_stock_data
