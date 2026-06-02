@@ -630,7 +630,8 @@ async def _click_image_upload_button_anywhere(page: Page):
             btn.dispatchEvent(new MouseEvent('click',     { bubbles: true, cancelable: true, view: window }));
             return label;
         };
-        const container = document.querySelector('.se-main-container') || document;
+        const container = document.querySelector('.se-main-container');
+        if (!container) return null;  // se-main-container 없으면 에디터 밖 클릭 방지
         const selectors = [
             'button.se-image-toolbar-button',
             'button.se-insert-menu-button-image',
@@ -1059,17 +1060,16 @@ async def upload_image(page: Page, img_path: Path):
                     break
                 await asyncio.sleep(0.5)
 
-            clicked = await _click_image_upload_button(page)
-            if not clicked:
-                await _restore_editor_surface(page)
-                await asyncio.sleep(0.5)
+            # floating toolbar 먼저 시도 (매번 성공하는 경로)
+            float_ok = await _click_se3_insert_photo(page)
+            if float_ok:
+                clicked = "floating_toolbar"
+            else:
                 clicked = await _click_image_upload_button(page)
-
-            if not clicked:
-                log.warning("툴바 직접 클릭 실패 — floating toolbar 방식 시도")
-                float_ok = await _click_se3_insert_photo(page)
-                if float_ok:
-                    clicked = "floating_toolbar"
+                if not clicked:
+                    await _restore_editor_surface(page)
+                    await asyncio.sleep(0.5)
+                    clicked = await _click_image_upload_button(page)
 
             if clicked:
                 log.info(f"사진 버튼 클릭: {clicked}")
@@ -1398,9 +1398,9 @@ async def _focus_body_safe(page: Page):
     if focused:
         await asyncio.sleep(0.4)
         return
-    # 최종 fallback: Playwright로 본문 클릭 시도
+    # 최종 fallback: JS refocus (_playwright_click_body는 흰 화면 유발 금지)
     try:
-        await _playwright_click_body(page)
+        await _refocus_body(page)
         await asyncio.sleep(0.4)
     except Exception:
         pass
@@ -2639,6 +2639,7 @@ async def main():
     lock.__enter__()
     try:
         total = len(txts)
+        pending_items: list = []
         for idx, txt in enumerate(txts):
             result = parse_post(txt)
             if not result:
@@ -2665,42 +2666,45 @@ async def main():
                 except Exception as e:
                     log.warning(f"카드 생성 실패 (계속 진행): {e}")
 
-            log.info(f"--- [{idx + 1}/{total}] {txt.name} | 이미지 {len(image_paths)}장 ---")
+            pending_items.append((txt, title, body, category, image_paths))
 
-            # 메모리 6GB 대응: 글 1편마다 독립 크롬 실행→발행→종료로 메모리 누적 차단.
-            # persistent profile이라 매번 재로그인/2차인증 없이 세션 재사용됨.
-            async with async_playwright() as p:
-                browser = await p.chromium.launch_persistent_context(
-                    executable_path="/usr/bin/chromium-browser",
-                    user_data_dir=str(PROFILE_DIR),
-                    headless=True,
-                    user_agent=(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
-                    ),
-                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
-                    viewport={"width": 1920, "height": 1080},
-                )
-                page = browser.pages[0] if browser.pages else await browser.new_page()
-                try:
-                    await login(page)
-                    ok = await publish_post(page, title, body, category, image_paths, schedule_dt=parse_schedule(txt.name))
-                    if ok:
-                        move_to_done(txt)
-                    else:
-                        log.error(f"발행 실패: {txt.name}")
-                except Exception as e:
-                    log.error(f"발행 중 오류 ({txt.name}): {e}")
-                finally:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch_persistent_context(
+                user_data_dir=str(PROFILE_DIR),
+                headless=False,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                    "--start-maximized",
+                ],
+            )
+            page = browser.pages[0] if browser.pages else await browser.new_page()
+            try:
+                await login(page)
+                for idx, (txt, title, body, category, image_paths) in enumerate(pending_items):
+                    log.info(f"--- [{idx + 1}/{total}] {txt.name} | 이미지 {len(image_paths)}장 ---")
                     try:
-                        await asyncio.sleep(2)
-                        await browser.close()
-                    except Exception:
-                        pass
-
-            # 다음 글 전 크롬 종료/프로필 락 해제 대기
-            await asyncio.sleep(3)
+                        ok = await publish_post(page, title, body, category, image_paths, schedule_dt=parse_schedule(txt.name))
+                        if ok:
+                            move_to_done(txt)
+                        else:
+                            log.error(f"발행 실패: {txt.name}")
+                    except Exception as e:
+                        log.error(f"발행 중 오류 ({txt.name}): {e}")
+                    if idx < len(pending_items) - 1:
+                        await asyncio.sleep(3)
+            finally:
+                try:
+                    await asyncio.sleep(2)
+                    await browser.close()
+                except Exception:
+                    pass
 
         log.info("모든 발행 완료")
     finally:
