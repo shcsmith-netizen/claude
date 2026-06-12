@@ -113,15 +113,7 @@ def get_image_paths(filename: str) -> list[Path]:
     exts = {".png", ".jpg", ".jpeg", ".webp"}
     if exact_dir.is_dir():
         return sorted(p for p in exact_dir.iterdir() if p.suffix.lower() in exts and not p.name.startswith("."))
-    
-    parts = stem.split("_")
-    date_code = (parts[0] + parts[1]) if len(parts) >= 2 and parts[1].isdigit() else stem[:8]
-    img_dir = IMAGES_DIR / date_code
-    if not img_dir.is_dir():
-        img_dir = IMAGES_DIR / stem[:6]
-    if not img_dir.is_dir():
-        return []
-    return sorted(p for p in img_dir.iterdir() if p.suffix.lower() in exts and not p.name.startswith("."))
+    return []
 
 
 def clean_body_text(text: str) -> str:
@@ -808,17 +800,31 @@ async def _set_file_input_anywhere(page: Page, img_path: Path) -> bool:
 
 
 async def _click_pc_upload_panel(page: Page) -> bool:
-    labels = ["내 PC에서 불러오기", "내 PC", "PC에서 불러오기", "파일 선택", "사진 추가"]
-    for ctx in _editor_contexts(page):
-        for label in labels:
-            try:
-                btn = ctx.get_by_text(label, exact=True).first
-                if await btn.is_visible(timeout=350):
-                    await btn.click()
-                    await asyncio.sleep(0.7)
-                    return True
-            except Exception:
-                continue
+    # .se-popup 범위 내 JS 클릭 — 에디터 밖 링크 클릭으로 페이지 이동하는 버그 방지
+    labels = ["내 PC에서 불러오기", "내 PC", "PC에서 불러오기", "파일 선택"]
+    try:
+        found = await page.evaluate("""(labels) => {
+            const roots = [
+                document.querySelector('.se-popup'),
+                document.querySelector('.se-dialog-inner'),
+                document.querySelector('.se-file-upload'),
+                document.querySelector('.se-popup-inner'),
+            ].filter(Boolean);
+            if (!roots.length) return false;
+            for (const root of roots) {
+                const elems = Array.from(root.querySelectorAll('button, [role="button"], label, a'));
+                for (const label of labels) {
+                    const el = elems.find(e => (e.innerText || e.textContent || '').trim() === label);
+                    if (el) { el.click(); return true; }
+                }
+            }
+            return false;
+        }""", labels)
+        if found:
+            await asyncio.sleep(0.7)
+            return True
+    except Exception:
+        pass
     return False
 
 
@@ -870,15 +876,24 @@ async def _restore_editor_surface(page: Page) -> bool:
 async def _dismiss_transfer_error_popup(page: Page) -> bool:
     """파일 전송 오류 팝업 감지 및 확인 버튼 클릭. 팝업이 있으면 True 반환."""
     try:
-        # JS로 팝업 텍스트 확인 후 확인 버튼 클릭
         result = await page.evaluate("""() => {
-            const popups = Array.from(document.querySelectorAll('.se-popup, [role="dialog"], .ly_alert'));
+            const sel = '.se-popup, .se-popup-inner, .popup_inner, [role="dialog"], .ly_alert, .modal_pop, .se-dialog, .se-alert';
+            const popups = Array.from(document.querySelectorAll(sel));
+            const errorKeywords = ['파일 전송', '오류', '다시 시도', '실패', 'error', 'fail', '업로드'];
             for (const p of popups) {
                 const text = (p.innerText || p.textContent || '');
-                if (text.includes('파일 전송') || text.includes('오류') || text.includes('다시 시도')) {
-                    const btn = p.querySelector('button');
-                    if (btn) { btn.click(); return true; }
-                }
+                if (!errorKeywords.some(k => text.includes(k))) continue;
+                // 확인/닫기 버튼 우선, 없으면 첫 번째 버튼
+                const confirmBtn = Array.from(p.querySelectorAll('button')).find(b => {
+                    const t = (b.innerText || b.textContent || '').trim();
+                    return t === '확인' || t === '닫기' || t === '확인하기';
+                });
+                const anyBtn = p.querySelector('button');
+                const btn = confirmBtn || anyBtn;
+                if (btn) { btn.click(); return 'clicked'; }
+                // 버튼 없으면 DOM에서 강제 제거
+                p.remove();
+                return 'removed';
             }
             return false;
         }""")
@@ -887,13 +902,19 @@ async def _dismiss_transfer_error_popup(page: Page) -> bool:
             return True
     except Exception:
         pass
-    # Playwright 폴백
+    # Playwright 폴백 — "확인" 버튼
     try:
         btn = page.get_by_role("button", name="확인", exact=True)
         if await btn.count() > 0 and await btn.first.is_visible(timeout=500):
             await btn.first.click()
             await asyncio.sleep(1.5)
             return True
+    except Exception:
+        pass
+    # 최후 폴백 — Escape 키
+    try:
+        await page.keyboard.press("Escape")
+        await asyncio.sleep(0.5)
     except Exception:
         pass
     return False
@@ -1093,7 +1114,11 @@ async def upload_image(page: Page, img_path: Path):
                         break
                     await asyncio.sleep(wait_sec)
             if not input_set:
-                await page.screenshot(path=str(LOG_DIR / f"img_upload_fail_{img_path.stem}.png"))
+                # page 닫혔어도 RuntimeError로 변환해 재시도 경로 유지
+                try:
+                    await page.screenshot(path=str(LOG_DIR / f"img_upload_fail_{img_path.stem}.png"))
+                except Exception:
+                    pass
                 raise RuntimeError(f"이미지 file input 없음: {img_path.name}")
 
             log.info(f"파일 설정: {img_path.name}")
@@ -1648,21 +1673,31 @@ async def login(page: Page):
     if NAVER_ID and NAVER_PW:
         try:
             log.info("클립보드 방식으로 자동 로그인 시도...")
-            await page.click("#id")
-            await asyncio.sleep(0.5)
-            if set_clipboard(NAVER_ID):
-                await page.keyboard.press("Control+V")
-            else:
-                await page.fill("#id", NAVER_ID)
-            await asyncio.sleep(0.5)
 
-            await page.click("#pw")
-            await asyncio.sleep(0.5)
-            if set_clipboard(NAVER_PW):
-                await page.keyboard.press("Control+V")
-            else:
-                await page.fill("#pw", NAVER_PW)
-            await asyncio.sleep(0.5)
+            # 클립보드 Ctrl+V는 브라우저 창이 OS 포커스를 잃으면 무시됨(사용자가 PC 사용 중일 때)
+            # → 입력 후 실제 값 검증, 미반영이면 타이핑 폴백 (2026-06-12 빈 칸 로그인 사고)
+            async def _enter_credential(selector: str, value: str, label: str) -> None:
+                await page.click(selector)
+                await asyncio.sleep(0.5)
+                if set_clipboard(value):
+                    await page.keyboard.press("Control+V")
+                    await asyncio.sleep(0.5)
+                entered = ""
+                try:
+                    entered = await page.input_value(selector)
+                except Exception:
+                    pass
+                if entered != value:
+                    log.warning(f"{label} 붙여넣기 미반영(포커스 상실 추정) → 키 입력 폴백")
+                    await page.fill(selector, "")
+                    await page.type(selector, value, delay=90)
+                    await asyncio.sleep(0.5)
+
+            await _enter_credential("#id", NAVER_ID, "ID")
+            await _enter_credential("#pw", NAVER_PW, "PW")
+
+            if not await page.input_value("#id"):
+                raise Exception("ID 입력 실패 (클립보드·타이핑 모두 미반영)")
 
             login_btn = page.locator(".btn_login, #log\\.login, button[type='submit']").first
             await login_btn.click()
@@ -2655,10 +2690,7 @@ async def main():
             if not image_paths and "[이미지]" in body:
                 try:
                     from card_generator import generate_cards
-                    stem = txt.stem
-                    parts = stem.split("_")
-                    code = (parts[0] + parts[1]) if len(parts) >= 2 and parts[1].isdigit() else stem[:8]
-                    out_dir = IMAGES_DIR / code
+                    out_dir = IMAGES_DIR / txt.stem  # stem 전체 = 파일마다 고유 디렉토리
                     log.info(f"카드 이미지 자동 생성: {out_dir}")
                     generate_cards(txt, out_dir)
                     image_paths = get_image_paths(txt.name)
