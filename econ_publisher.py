@@ -674,6 +674,9 @@ async def _click_image_upload_button_anywhere(page: Page):
 async def _click_image_upload_button(page: Page):
     # .se-main-container 스코핑으로 에디터 외부 링크 클릭 방지
     selectors = [
+        # blog_auto 검증: 상단 툴바 사진버튼은 .se-main-container 밖이라 스코핑 없이 잡아야 한다
+        "button.se-image-toolbar-button",
+        ".se-image-toolbar-button",
         ".se-main-container button.se-image-toolbar-button",
         ".se-main-container .se-image-toolbar-button",
         ".se-main-container button.se-insert-menu-button-image",
@@ -1009,16 +1012,8 @@ async def upload_image(page: Page, img_path: Path):
         uploaded = False
 
         try:
-            for ctx in _editor_contexts(page):
-                try:
-                    await ctx.evaluate(_BLOCK_FILE_CLICK)
-                except Exception:
-                    pass
-            try:
-                await page.evaluate(_BLOCK_FILE_CLICK)
-            except Exception:
-                pass
-
+            # filechooser 방식: file input click 무력화 패치는 적용하지 않는다.
+            # (무력화하면 SE3 사진 버튼이 여는 OS 파일창(filechooser) 이벤트가 막혀 업로드 실패)
             await _refocus_body(page)
             await asyncio.sleep(0.5)
 
@@ -1081,38 +1076,43 @@ async def upload_image(page: Page, img_path: Path):
                     break
                 await asyncio.sleep(0.5)
 
-            # floating toolbar 먼저 시도 (매번 성공하는 경로)
-            float_ok = await _click_se3_insert_photo(page)
-            if float_ok:
-                clicked = "floating_toolbar"
-            else:
-                clicked = await _click_image_upload_button(page)
-                if not clicked:
-                    await _restore_editor_surface(page)
-                    await asyncio.sleep(0.5)
-                    clicked = await _click_image_upload_button(page)
-
-            if clicked:
-                log.info(f"사진 버튼 클릭: {clicked}")
-                await asyncio.sleep(2.0)
-            else:
-                log.warning(f"사진 버튼 클릭 실패 — file input 직접 접근 시도: {img_path.name}")
-
-            # 사진 버튼 클릭 후 file input이 DOM에 붙는 데 시간이 걸림 →
-            # 짧게 끊지 말고 최대 ~9초까지 점진 대기 (1차 시도 실패 후 새로고침 40초 낭비 방지)
+            # SE3 사진 버튼은 OS 파일창(filechooser)을 연다 → expect_file_chooser로 잡아 파일 지정.
+            # (DOM input[type=file]을 찾는 방식은 SE3에서 input이 남지 않아 실패한다)
             input_set = False
-            for wait_sec in (0.15, 0.35, 0.5, 0.7, 1.0, 1.0, 1.5, 1.5, 2.0):
-                if await _set_file_input_anywhere(page, img_path):
-                    input_set = True
-                    break
-                await asyncio.sleep(wait_sec)
+            try:
+                async with page.expect_file_chooser(timeout=15000) as fc_info:
+                    # blog_auto 검증 경로: 상단 툴바 se-image-toolbar-button 직접 클릭 우선
+                    # (floating '+→사진'은 본문 삽입이 아닌 엉뚱한 입력창을 열어 컴포넌트 미증가)
+                    clicked = await _click_image_upload_button(page)
+                    if not clicked:
+                        await _restore_editor_surface(page)
+                        await asyncio.sleep(0.5)
+                        clicked = await _click_image_upload_button(page)
+                    if not clicked:
+                        # 최후 폴백: floating toolbar (+→사진)
+                        if await _click_se3_insert_photo(page):
+                            clicked = "floating_toolbar"
+                    if clicked:
+                        log.info(f"사진 버튼 클릭: {clicked}")
+                chooser = await fc_info.value
+                await chooser.set_files(str(img_path))
+                input_set = True
+            except Exception as e:
+                log.warning(f"사진 버튼 filechooser 1차 실패, PC 업로드 패널 폴백: {img_path.name} ({e})")
+
+            # 2차 폴백: 'PC에서 불러오기' 패널을 거쳐 filechooser
             if not input_set:
-                await _click_pc_upload_panel(page)
-                for wait_sec in (0.2, 0.7, 1.2, 1.5, 2.0):
+                try:
+                    async with page.expect_file_chooser(timeout=12000) as fc_info:
+                        await _click_pc_upload_panel(page)
+                    chooser = await fc_info.value
+                    await chooser.set_files(str(img_path))
+                    input_set = True
+                except Exception as e:
+                    # 3차: 혹시 DOM에 file input이 직접 남아 있으면 사용
+                    log.warning(f"PC 업로드 패널 filechooser 실패, DOM input 폴백: {img_path.name} ({e})")
                     if await _set_file_input_anywhere(page, img_path):
                         input_set = True
-                        break
-                    await asyncio.sleep(wait_sec)
             if not input_set:
                 # page 닫혔어도 RuntimeError로 변환해 재시도 경로 유지
                 try:
@@ -2704,6 +2704,7 @@ async def main():
             browser = await p.chromium.launch_persistent_context(
                 user_data_dir=str(PROFILE_DIR),
                 headless=False,
+                channel="chrome",  # 시스템 Chrome 사용 (프로필이 시스템 Chrome 버전으로 업그레이드됨 → 번들 chromium은 거부됨)
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
